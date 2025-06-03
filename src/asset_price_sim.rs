@@ -21,6 +21,6 @@ pub fn run(option: Options) -> Vec<Vec<f64>> {
         }
         prices.push(prices_at_step);
     }
-    
+
     prices
 }
