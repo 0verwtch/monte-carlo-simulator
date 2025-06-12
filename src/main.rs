@@ -5,7 +5,7 @@ mod payoff_calc;
 use std::time::Duration;
 use options::ExerciseType::European;
 use options::PayoffType::Buy;
-
+use crate::payoff_calc::pay_off_calc;
 
 fn main() {
     let option: options::Options = options::Options::new(
@@ -18,18 +18,15 @@ fn main() {
          102.0,           // current price of underlying asset
          100,              // Monte Carlo time granularity
          10000,
-         Duration::from_millis(5000).as_secs_f64()
+         payoff_calc::get_time_stamp(0.5) as f64
     );
 
     let paths = asset_price_sim::run(option.clone());
-    // for path in paths.clone() {
-    //     println!("{:?}\n", path);
-    // }
     
     // Pay off calculator
     let pay_offs = payoff_calc::run(option.clone(), paths);
-    println!("{:#?}", pay_offs);
+    println!("{:#?}", payoff_calc::get_time_stamp(0.5,));
     for pay_off in pay_offs {
-        println!("=== {:?}\n ===", pay_off);
+        println!("{:?}\n", pay_off);
     }
 }

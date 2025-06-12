@@ -1,7 +1,7 @@
 /**
 * Options structure
 **/
-
+use crate::payoff_calc::get_time_stamp;
 #[derive(Debug, Clone)]
 pub enum ExerciseType {
     European, // Exercised only at maturity
@@ -51,7 +51,7 @@ impl Options {
             asset_price,
             time_steps,
             number_of_sims,
-            exercise_time,
+            exercise_time: get_time_stamp(time_to_maturity as f32) as f64,
         }
     }
 }
