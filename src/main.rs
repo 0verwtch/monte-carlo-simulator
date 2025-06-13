@@ -1,12 +1,18 @@
+/**
+* Description: Main entrance of the program
+* 1. Runs the paths generator
+* 2. Calculates the payoffs per path
+* 3. Generates the final price adjusted using the pricing engine
+*/
+
 mod options;
 mod asset_price_sim;
 mod payoff_calc;
 mod influxdb;
+mod pricing_engine;
 
-use std::time::Duration;
 use options::ExerciseType::European;
 use options::PayoffType::Buy;
-use crate::payoff_calc::pay_off_calc;
 
 fn main() {
     let option: options::Options = options::Options::new(
@@ -22,12 +28,13 @@ fn main() {
          payoff_calc::get_time_stamp(0.5) as f64
     );
 
+    // Path generation
     let paths = asset_price_sim::run(option.clone());
     
     // Pay off calculator
     let pay_offs = payoff_calc::run(option.clone(), paths);
-    println!("{:#?}", payoff_calc::get_time_stamp(0.5,));
-    for pay_off in pay_offs {
-        println!("{:?}\n", pay_off);
-    }
+    
+    // Pricing estimation
+    let pricing = pricing_engine::run(pay_offs.clone(), option.risk_free_rate, option.time_to_maturity);
+    println!("{:?}", pricing);
 }

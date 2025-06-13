@@ -1,7 +1,7 @@
-use crate::options::Options;
 /**
 * This module defines the Geometric brownian motion for generating different paths
 */
+use crate::options::Options;
 use rand::Rng;
 
 pub fn run(option: Options) -> Vec<Vec<f64>> {
