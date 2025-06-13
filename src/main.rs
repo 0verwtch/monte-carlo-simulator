@@ -1,6 +1,7 @@
 mod options;
 mod asset_price_sim;
 mod payoff_calc;
+mod influxdb;
 
 use std::time::Duration;
 use options::ExerciseType::European;
