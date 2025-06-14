@@ -1,51 +1,74 @@
-
+use chrono::Utc;
+use dotenv;
+use futures::stream;
 /**
 * Description: This module provides methods to read and write to an influxdb 2 instance
 * T
 */
-use influxdb2::{models::DataPoint, Client};
+use influxdb2::{Client, models::DataPoint, api::write::TimestampPrecision};
 use std::env;
-use chrono::Utc;
-use dotenv;
-use futures::stream;
+use std::sync::Arc;
 
-struct InfluxDB {
-    org: String,
-    bucket: String,
-    token: String,
-    client: Client,
+#[derive(Clone, Debug)]
+pub struct InfluxDB {
+    pub org: String,
+    pub bucket: String,
+    pub token: String,
+    pub client: Client,
+    pub batch: Vec<DataPoint>,
 }
 
 impl InfluxDB {
-    fn new(org: String, bucket: String, token: String, client: Client) -> InfluxDB {
+    pub fn new(org: String, bucket: String, token: String) -> InfluxDB {
+        dotenv::dotenv().ok();
+
+        // Load from env, fallback to args
+        let org_env = env::var("INFLUXDB_ORG").unwrap_or(org);
+        let bucket_env = env::var("INFLUXDB_BUCKET").unwrap_or(bucket);
+        let token_env = env::var("INFLUXDB_TOKEN").unwrap_or(token);
+        let url = env::var("INFLUX_URL").expect("INFLUX_URL not set");
+
+        let client = Client::new(&url, &org_env, &token_env);
+
         Self {
-            org,
-            bucket,
-            token,
+            org: org_env,
+            bucket: bucket_env,
+            token: token_env,
             client,
+            batch: Vec::with_capacity(1000),
+            
         }
     }
-
-    pub async fn create(
+    pub fn create(
+        &self,
         value: f64,
         tag: String,
         tag_value: String,
         measurement: String,
         field_name: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        dotenv::dotenv().ok();
-        let org = env::var("INFLUXDB_ORG");
-        let bucket = env::var("INFLUXDB_BUCKET");
-        let token = env::var("INFLUXDB_TOKEN");
-        let client = Client::new(env::var("INFLUX_URL").unwrap(), org.unwrap(), token.unwrap());
-
-        let point = DataPoint::builder(measurement)
-            .tag(tag, tag_value)
-            .field(field_name, value.to_string())
-            .timestamp(Utc::now().timestamp_millis())
+    ) -> Result<DataPoint, Box<dyn std::error::Error>> {
+        // Create a data point with the given value, tag, and measurement
+        let point = DataPoint::builder(measurement.clone())
+            .tag(tag.clone(), tag_value.clone())
+            .field(field_name, value)
+            .timestamp((Utc::now().timestamp_millis()))
             .build()
             .expect("Failed to build data point");
-        client.write(bucket.unwrap().as_str(), stream::once(async { point }));
+
+        Ok(point)
+    }
+    pub async fn write(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Write batch data point to InfluxDB
+        let points: Vec<_> = self.batch.drain(..).collect();
+        self.client
+            .write_with_precision(
+                self.bucket.as_str(),
+                stream::iter(points.clone()),
+                TimestampPrecision::Milliseconds,
+            )
+            .await
+            .expect("Failed to write to InfluxDB");
+        println!("Wrote {} points to InfluxDB", points.clone().len());
         Ok(())
     }
 }

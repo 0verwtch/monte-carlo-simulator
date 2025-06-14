@@ -13,8 +13,10 @@ mod pricing_engine;
 
 use options::ExerciseType::European;
 use options::PayoffType::Buy;
+use tokio;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let option: options::Options = options::Options::new(
         European,
         100.0,
@@ -32,7 +34,7 @@ fn main() {
     let paths = asset_price_sim::run(option.clone());
     
     // Pay off calculator
-    let pay_offs = payoff_calc::run(option.clone(), paths);
+    let pay_offs = payoff_calc::run(option.clone(), paths.await.lock().await.clone());
     
     // Pricing estimation
     let pricing = pricing_engine::run(pay_offs.clone(), option.risk_free_rate, option.time_to_maturity);
