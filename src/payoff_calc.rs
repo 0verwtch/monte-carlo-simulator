@@ -51,7 +51,7 @@ pub async fn run(option: Options, paths: Vec<Vec<f64>>) -> Vec<f64> {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<(usize, f64)>();
 
     // Spawn a task to handle reading from the channel and writing to InfluxDB
-    register_batch_points(influx_clone.clone(), rx, tag.clone(), measurement.clone(), field_name.clone());
+    let handle = register_batch_points(influx_clone.clone(), rx, tag.clone(), measurement.clone(), field_name.clone());
     // Spawn a task to handle writing to InfluxDB
     for (i, result) in results.iter().enumerate() {
         // Send the payoff to the channel
@@ -61,6 +61,7 @@ pub async fn run(option: Options, paths: Vec<Vec<f64>>) -> Vec<f64> {
     }
     println!("{:?}", results.len());
     drop(tx); // Close the channel to signal that no more messages will be sent
+    handle.await.expect("Receiver task has panicked");
     results
 }
  

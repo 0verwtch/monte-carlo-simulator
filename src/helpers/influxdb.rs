@@ -9,7 +9,7 @@ use futures::stream;
 use influxdb2::{Client, api::write::TimestampPrecision, models::DataPoint};
 use std::env;
 use std::sync::Arc;
-use tokio::sync::{Mutex, mpsc::UnboundedReceiver as Receiver};
+use tokio::{sync::{mpsc::UnboundedReceiver as Receiver, Mutex}, task::JoinHandle};
 
 #[derive(Clone, Debug)]
 pub struct InfluxDB {
@@ -18,6 +18,7 @@ pub struct InfluxDB {
     pub token: String,
     pub client: Client,
     pub batch: Vec<DataPoint>,
+    pub log_file: String,
 }
 
 impl InfluxDB {
@@ -38,6 +39,7 @@ impl InfluxDB {
             token: token_env,
             client,
             batch: Vec::with_capacity(1000),
+            log_file: create_log_file("influxdb"),
         }
     }
     pub fn create(
@@ -54,7 +56,18 @@ impl InfluxDB {
             .field(field_name, value)
             .timestamp((Utc::now().timestamp_millis()))
             .build()
-            .expect("Failed to build data point");
+            .unwrap_or_else(|err| {
+                write_log(
+                    format!(
+                        "Failed to create data point for tag {} with value {}: {}",
+                        tag, value, err
+                    )
+                    .as_str(),
+                    &self.log_file,
+                )
+                .unwrap();
+                panic!("Error creating data point: {}", err);
+            });
 
         Ok(point)
     }
@@ -68,7 +81,14 @@ impl InfluxDB {
                 TimestampPrecision::Milliseconds,
             )
             .await
-            .expect("Failed to write to InfluxDB");
+            .unwrap_or_else(|err| {
+                write_log(
+                    format!("Failed to write batch points to InfluxDB: {}", err).as_str(),
+                    &self.log_file,
+                )
+                .unwrap();
+                panic!("Error writing batch points: {}", err);
+            });
         println!(
             "Batch length is {}, points written: {}",
             self.batch.len(),
@@ -83,19 +103,15 @@ pub fn register_batch_points(
     tag: String,
     measurement: String,
     field_name: String,
-) {
+) -> JoinHandle<()> {
     // This function will handle writing prices to InfluxDB in batches
     let log_file = create_log_file("influxdb");
 
-    let _ = tokio::spawn(async move {
+    tokio::spawn(async move {
         let mut counter = 0;
         while let Some((path, price)) = rx.recv().await {
             counter += 1;
-            write_log(
-                format!("InfluxDB write for path {}: {}", path, price).as_str(),
-                &log_file,
-            )
-            .unwrap();
+
             // Write to influxdb
             let point = {
                 let influx = influx.clone();
@@ -108,22 +124,39 @@ pub fn register_batch_points(
                         measurement.clone(),
                         field_name.clone(),
                     )
-                    .expect("Failed to write to InfluxDB")
+                    .unwrap_or_else(|err| {
+                        write_log(
+                            format!(
+                                "Failed to create data point for path {} with price {}: {}",
+                                path, price, err
+                            )
+                            .as_str(),
+                            &log_file,
+                        )
+                        .unwrap();
+                        panic!("Error creating data point: {}", err);
+                    })
             };
             {
                 let mut influx = influx.lock().await;
                 influx.batch.push(point);
+                write_log(
+                    format!(
+                        "Batch size increased to {} for price: {} on path: {}",
+                        influx.batch.len(),
+                        price,
+                        path
+                    )
+                    .as_str(),
+                    &log_file,
+                )
+                .unwrap();
             }
             if influx.lock().await.batch.len() >= 1000 {
                 let mut influx = influx.lock().await;
                 influx.write().await.expect("Failed to write to InfluxDB");
 
                 influx.batch.clear();
-            } else {
-                write_log(
-                    format!("InfluxDB write task completed for {} points", counter).as_str(),
-                    &log_file,
-                ).unwrap();
             }
         }
         println!("InfluxDB write task completed, flushing remaining points...");
@@ -132,5 +165,5 @@ pub fn register_batch_points(
             let mut influx = influx.lock().await;
             influx.write().await.expect("Failed to write to InfluxDB");
         }
-    });
+    })
 }
