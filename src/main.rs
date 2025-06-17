@@ -8,7 +8,7 @@
 mod options;
 mod asset_price_sim;
 mod payoff_calc;
-mod influxdb;
+mod helpers;
 mod pricing_engine;
 
 use options::ExerciseType::European;
@@ -37,6 +37,6 @@ async fn main() {
     let pay_offs = payoff_calc::run(option.clone(), paths.await.lock().await.clone());
     
     // Pricing estimation
-    let pricing = pricing_engine::run(pay_offs.clone(), option.risk_free_rate, option.time_to_maturity);
+    let pricing = pricing_engine::run(pay_offs.await.clone(), option.risk_free_rate, option.time_to_maturity);
     println!("{:?}", pricing);
 }
